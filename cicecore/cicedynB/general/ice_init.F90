@@ -66,8 +66,8 @@
                                  n_doc, n_dic, n_don, n_fed, n_fep, &
                                  max_nstrm
       use ice_calendar, only: year_init, month_init, day_init, sec_init, &
-                              istep0, histfreq, histfreq_n, &
-                              dumpfreq, dumpfreq_n, diagfreq, &
+                              istep0, histfreq, histfreq_n, histfreq_base, &
+                              dumpfreq, dumpfreq_n, diagfreq, dumpfreq_base, &
                               npt, dt, ndtd, days_per_year, use_leap_years, &
                               write_ic, dump_last, npt_unit
       use ice_arrays_column, only: oceanmixed_ice
@@ -166,6 +166,7 @@
         print_global,   print_points,   latpnt,          lonpnt,        &
         forcing_diag,   histfreq,       histfreq_n,      hist_avg,      &
         history_dir,    history_file,   history_precision, cpl_bgc,     &
+        histfreq_base,  dumpfreq_base,                                  &
         conserv_check,  debug_model,    debug_model_step,               &
         year_init,      month_init,     day_init,        sec_init,      &
         write_ic,       incond_dir,     incond_file,     version_name
@@ -279,6 +280,7 @@
       histfreq(4) = 'm'      ! output frequency option for different streams
       histfreq(5) = 'y'      ! output frequency option for different streams
       histfreq_n(:) = 1      ! output frequency 
+      histfreq_base = 'zero' ! output frequency reference date
       hist_avg = .true.      ! if true, write time-averages (not snapshots)
       history_format = 'default' ! history file format
       history_dir  = './'    ! write to executable dir for default
@@ -290,13 +292,12 @@
       incond_file = 'iceh_ic'! file prefix
       dumpfreq='y'           ! restart frequency option
       dumpfreq_n = 1         ! restart frequency
+      dumpfreq_base = 'init' ! restart frequency reference date
       dump_last = .false.    ! write restart on last time step
-      restart = .false.      ! if true, read restart files for initialization
       restart_dir  = './'     ! write to executable dir for default
       restart_file = 'iced'  ! restart file name prefix
       restart_ext  = .false. ! if true, read/write ghost cells
       restart_coszen  = .false. ! if true, read/write coszen
-      use_restart_time = .true.   ! if true, use time info written in file
       pointer_file = 'ice.restart_file'
       restart_format = 'default'  ! restart file format
       lcdf64       = .false. ! 64 bit offset for netCDF
@@ -446,6 +447,8 @@
 #ifndef CESMCOUPLED
       runid   = 'unknown'   ! run ID used in CESM and for machine 'bering'
       runtype = 'initial'   ! run type: 'initial', 'continue'
+      restart = .false.      ! if true, read ice state from restart file
+      use_restart_time = .false.   ! if true, use time info written in file
 #endif
 
       ! extra tracers
@@ -613,6 +616,7 @@
          call broadcast_scalar(histfreq(n),       master_task)
       enddo  
       call broadcast_array(histfreq_n,            master_task)
+      call broadcast_scalar(histfreq_base,        master_task)
       call broadcast_scalar(hist_avg,             master_task)
       call broadcast_scalar(history_dir,          master_task)
       call broadcast_scalar(history_file,         master_task)
@@ -624,6 +628,7 @@
       call broadcast_scalar(incond_file,          master_task)
       call broadcast_scalar(dumpfreq,             master_task)
       call broadcast_scalar(dumpfreq_n,           master_task)
+      call broadcast_scalar(dumpfreq_base,        master_task)
       call broadcast_scalar(dump_last,            master_task)
       call broadcast_scalar(restart_file,         master_task)
       call broadcast_scalar(restart,              master_task)
@@ -1104,6 +1109,16 @@
       if(history_precision .ne. 4 .and. history_precision .ne. 8) then
          write (nu_diag,*) subname//' ERROR: bad value for history_precision, allowed values: 4, 8'
          abort_list = trim(abort_list)//":22"
+      endif
+
+      if(histfreq_base /= 'init' .and. histfreq_base /= 'zero') then
+         write (nu_diag,*) subname//' ERROR: bad value for histfreq_base, allowed values: init, zero'
+         abort_list = trim(abort_list)//":24"
+      endif
+
+      if(dumpfreq_base /= 'init' .and. dumpfreq_base /= 'zero') then
+         write (nu_diag,*) subname//' ERROR: bad value for dumpfreq_base, allowed values: init, zero'
+         abort_list = trim(abort_list)//":25"
       endif
 
       if (.not.(trim(dumpfreq) == 'y' .or. trim(dumpfreq) == 'Y' .or. &
@@ -1654,6 +1669,7 @@
          write(nu_diag,1021) ' numax            = ', numax
          write(nu_diag,1033) ' histfreq         = ', histfreq(:)
          write(nu_diag,1023) ' histfreq_n       = ', histfreq_n(:)
+         write(nu_diag,1031) ' histfreq_base    = ', trim(histfreq_base)
          write(nu_diag,1011) ' hist_avg         = ', hist_avg
          if (.not. hist_avg) write(nu_diag,1031) ' History data will be snapshots'
          write(nu_diag,1031) ' history_dir      = ', trim(history_dir)
@@ -1666,6 +1682,7 @@
          endif
          write(nu_diag,1031) ' dumpfreq         = ', trim(dumpfreq)
          write(nu_diag,1021) ' dumpfreq_n       = ', dumpfreq_n
+         write(nu_diag,1031) ' dumpfreq_base    = ', trim(dumpfreq_base)
          write(nu_diag,1011) ' dump_last        = ', dump_last
          write(nu_diag,1011) ' restart          = ', restart
          write(nu_diag,1031) ' restart_dir      = ', trim(restart_dir)
